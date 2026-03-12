@@ -1,0 +1,109 @@
+name: Auto Tag On Main
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-tag-main
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - name: Create semantic tag from PR title/body
+        id: version
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Skip if this merged commit already has a v* tag.
+          if git tag --points-at "${MERGE_SHA}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Merged commit already has a semantic tag. Nothing to do."
+            echo "created=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          latest_tag="$(git tag -l 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
+
+          # Conventional Commits bump rules:
+          # - major: "BREAKING CHANGE" in body OR "type(scope)!:"
+          # - minor: "feat:"
+          # - patch: fallback for all other commits
+          bump="patch"
+          if echo "${PR_TITLE}" | grep -Eq '^[a-z]+(\([^)]+\))?!:' || echo "${PR_BODY}" | grep -Eq 'BREAKING CHANGE:'; then
+            bump="major"
+          elif echo "${PR_TITLE}" | grep -Eq '^feat(\([^)]+\))?:'; then
+            bump="minor"
+          fi
+
+          if [[ -z "${latest_tag}" ]]; then
+            case "${bump}" in
+              major) next_tag="v1.0.0" ;;
+              minor) next_tag="v0.1.0" ;;
+              patch) next_tag="v0.0.1" ;;
+            esac
+          else
+            version="${latest_tag#v}"
+            IFS='.' read -r major minor patch <<< "${version}"
+
+            case "${bump}" in
+              major)
+                major=$((major + 1))
+                minor=0
+                patch=0
+                ;;
+              minor)
+                minor=$((minor + 1))
+                patch=0
+                ;;
+              patch)
+                patch=$((patch + 1))
+                ;;
+            esac
+
+            next_tag="v${major}.${minor}.${patch}"
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "${next_tag}" "${MERGE_SHA}" -m "Release ${next_tag}"
+          git push origin "${next_tag}"
+
+          echo "created=true" >> "${GITHUB_OUTPUT}"
+          echo "bump=${bump}" >> "${GITHUB_OUTPUT}"
+          echo "next_tag=${next_tag}" >> "${GITHUB_OUTPUT}"
+          echo "Created tag: ${next_tag}"
+
+      - name: Create GitHub release
+        if: steps.version.outputs.created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ steps.version.outputs.next_tag }}"
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "Release ${tag} already exists."
+            exit 0
+          fi
+          gh release create "${tag}" --title "${tag}" --generate-notes
