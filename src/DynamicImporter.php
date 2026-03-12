@@ -7,6 +7,7 @@ use ChrisKelemba\ExcelImport\Database\MongoDatabaseAdapter;
 use ChrisKelemba\ExcelImport\Database\PdoDatabaseAdapter;
 use ChrisKelemba\ExcelImport\Registry\ImportTableRegistry;
 use ChrisKelemba\ExcelImport\Service\DynamicImportService;
+use ChrisKelemba\ExcelImport\Workflow\ImportWorkflow;
 use PDO;
 
 class DynamicImporter
@@ -52,5 +53,10 @@ class DynamicImporter
         $registry = new ImportTableRegistry($this->connections, $this->config);
 
         return new DynamicImportService($registry, config: $this->config);
+    }
+
+    public function workflow(): ImportWorkflow
+    {
+        return new ImportWorkflow($this->service());
     }
 }

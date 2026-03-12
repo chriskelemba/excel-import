@@ -131,3 +131,37 @@ Wrap this package inside your framework controller/service:
 - Return JSON response in your framework format
 
 No framework dependency is required by this package.
+
+## Minimal Consumer Workflow
+
+For minimal controller code, use the workflow helper:
+
+```php
+<?php
+
+use ChrisKelemba\ExcelImport\DynamicImporter;
+
+$workflow = (new DynamicImporter(config: ['connection' => 'mysql']))
+    ->addPdoConnection('mysql', $pdo)
+    ->workflow();
+
+$preview = $workflow->previewFromPayload(
+    filePath: $filePath,
+    originalName: $originalName,
+    payload: $requestPayload // array or JSON string with `imports`
+);
+
+$result = $workflow->runFromPayload(
+    filePath: $filePath,
+    originalName: $originalName,
+    payload: $requestPayload // array or JSON string with `imports`
+);
+```
+
+`imports` supports snake_case and camelCase keys:
+- `column_map` / `columnMap`
+- `static_values` / `staticValues`
+- `header_row` / `headerRow`
+- `sample_rows` / `sampleRows`
+- `unique_by` / `uniqueBy`
+- `sheet_index` / `sheetIndex`
