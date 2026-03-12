@@ -1,0 +1,27 @@
+{
+  "name": "chriskelemba/excel-import",
+  "type": "library",
+  "description": "Framework-agnostic CSV/XLSX/JSON import package for PHP",
+  "license": "MIT",
+  "require": {
+    "php": "^8.2",
+    "ext-json": "*",
+    "ext-pdo": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "ChrisKelemba\\ExcelImport\\": "src/"
+    },
+    "files": [
+      "src/Support/ApcuPolyfill.php"
+    ]
+  },
+  "suggest": {
+    "ext-pdo_mysql": "Required for MySQL/MariaDB connections.",
+    "ext-pdo_pgsql": "Required for PostgreSQL connections.",
+    "ext-pdo_sqlite": "Required for SQLite connections.",
+    "ext-pdo_sqlsrv": "Required for SQL Server connections.",
+    "phpoffice/phpspreadsheet": "Required for XLSX support.",
+    "mongodb/mongodb": "Required for MongoDB support."
+  }
+}
