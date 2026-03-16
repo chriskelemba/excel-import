@@ -141,8 +141,7 @@ If you want consumers to only define routes, use the HTTP actions bridge:
 
 use ChrisKelemba\ExcelImport\DynamicImporter;
 
-$actions = (new DynamicImporter(config: ['connection' => 'mysql']))
-    ->http();
+$actions = (new DynamicImporter())->http();
 ```
 
 In Laravel, if no connection is manually registered, `DynamicImporter` auto-resolves the framework DB connection (from `config('database.default')` / `.env`) and uses it.
@@ -160,13 +159,15 @@ Route::post('/imports/run', [$actions, 'run']);
 
 ```php
 // Yii
-$actions = /* build as above */;
-
-$app->get('/imports/template', fn () => $actions->template(Yii::$app->request));
-$app->get('/imports/databases', fn () => $actions->databases(Yii::$app->request));
-$app->get('/imports/records', fn () => $actions->records(Yii::$app->request));
-$app->post('/imports/preview', fn () => $actions->preview(Yii::$app->request));
-$app->post('/imports/run', fn () => $actions->run(Yii::$app->request));
+// No custom app controller needed.
+// Package auto-registers `imports` controller in Yii via bootstrap.
+'rules' => [
+    'GET imports/template' => 'imports/template',
+    'GET imports/databases' => 'imports/databases',
+    'GET imports/records' => 'imports/records',
+    'POST imports/preview' => 'imports/preview',
+    'POST imports/run' => 'imports/run',
+];
 ```
 
 ```php
