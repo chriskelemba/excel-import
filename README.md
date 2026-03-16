@@ -132,6 +132,53 @@ Wrap this package inside your framework controller/service:
 
 No framework dependency is required by this package.
 
+## Route-Only Integration (No Custom Controller Logic)
+
+If you want consumers to only define routes, use the HTTP actions bridge:
+
+```php
+<?php
+
+use ChrisKelemba\ExcelImport\DynamicImporter;
+
+$actions = (new DynamicImporter(config: ['connection' => 'mysql']))
+    ->http();
+```
+
+In Laravel, if no connection is manually registered, `DynamicImporter` auto-resolves the framework DB connection (from `config('database.default')` / `.env`) and uses it.
+
+Then bind routes directly:
+
+```php
+// Laravel
+Route::get('/imports/template', [$actions, 'template']);
+Route::get('/imports/databases', [$actions, 'databases']);
+Route::get('/imports/records', [$actions, 'records']);
+Route::post('/imports/preview', [$actions, 'preview']);
+Route::post('/imports/run', [$actions, 'run']);
+```
+
+```php
+// Yii
+$actions = /* build as above */;
+
+$app->get('/imports/template', fn () => $actions->template(Yii::$app->request));
+$app->get('/imports/databases', fn () => $actions->databases(Yii::$app->request));
+$app->get('/imports/records', fn () => $actions->records(Yii::$app->request));
+$app->post('/imports/preview', fn () => $actions->preview(Yii::$app->request));
+$app->post('/imports/run', fn () => $actions->run(Yii::$app->request));
+```
+
+```php
+// Plain PHP (any router)
+$actions = /* build as above */;
+$result = $actions->run(); // reads body/query/files from globals when request is omitted
+```
+
+Payload/file handling supported by the bridge:
+- `imports` (array or JSON string), or single-import payload with `table`
+- `file` upload from request/`$_FILES`, or explicit `file_path` + optional `original_name`
+
 ## Minimal Consumer Workflow
 
 For minimal controller code, use the workflow helper:
