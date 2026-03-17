@@ -119,6 +119,94 @@ class PdoDatabaseAdapter implements DatabaseAdapterInterface
             }
         }
 
+        $driver = $this->driverName();
+        try {
+            match ($driver) {
+                'mysql', 'mariadb' => $this->upsertRowMysql($table, $row),
+                'pgsql', 'sqlite' => $this->upsertRowWithConflict($table, $row, $uniqueBy),
+                'sqlsrv' => $this->upsertRowSqlsrvMerge($table, $row, $uniqueBy),
+                default => $this->upsertRowLegacy($table, $row, $uniqueBy),
+            };
+        } catch (\Throwable $e) {
+            if ($this->shouldFallbackToLegacyUpsert($driver, $e->getMessage())) {
+                $this->upsertRowLegacy($table, $row, $uniqueBy);
+                return;
+            }
+
+            throw $e;
+        }
+    }
+
+    private function upsertRowMysql(string $table, array $row): void
+    {
+        $columns = array_keys($row);
+        $columnSql = implode(', ', array_map($this->quoteIdentifier(...), $columns));
+        $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+        $updateSql = implode(', ', array_map(function (string $column): string {
+            $quoted = $this->quoteIdentifier($column);
+            return $quoted . ' = VALUES(' . $quoted . ')';
+        }, $columns));
+
+        $sql = 'INSERT INTO ' . $this->quoteIdentifier($table)
+            . " ({$columnSql}) VALUES ({$placeholders}) ON DUPLICATE KEY UPDATE {$updateSql}";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(array_values($row));
+    }
+
+    private function upsertRowWithConflict(string $table, array $row, array $uniqueBy): void
+    {
+        $columns = array_keys($row);
+        $columnSql = implode(', ', array_map($this->quoteIdentifier(...), $columns));
+        $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+        $conflictSql = implode(', ', array_map($this->quoteIdentifier(...), $uniqueBy));
+        $updateSql = implode(', ', array_map(function (string $column): string {
+            $quoted = $this->quoteIdentifier($column);
+            return $quoted . ' = EXCLUDED.' . $quoted;
+        }, $columns));
+
+        $sql = 'INSERT INTO ' . $this->quoteIdentifier($table)
+            . " ({$columnSql}) VALUES ({$placeholders})"
+            . " ON CONFLICT ({$conflictSql}) DO UPDATE SET {$updateSql}";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(array_values($row));
+    }
+
+    private function upsertRowSqlsrvMerge(string $table, array $row, array $uniqueBy): void
+    {
+        $columns = array_keys($row);
+        $sourceSelect = implode(', ', array_map(function (string $column): string {
+            return '? AS ' . $this->quoteIdentifier($column);
+        }, $columns));
+
+        $on = implode(' AND ', array_map(function (string $column): string {
+            $quoted = $this->quoteIdentifier($column);
+            return 'target.' . $quoted . ' = source.' . $quoted;
+        }, $uniqueBy));
+
+        $updateSet = implode(', ', array_map(function (string $column): string {
+            $quoted = $this->quoteIdentifier($column);
+            return 'target.' . $quoted . ' = source.' . $quoted;
+        }, $columns));
+
+        $insertColumns = implode(', ', array_map($this->quoteIdentifier(...), $columns));
+        $insertValues = implode(', ', array_map(function (string $column): string {
+            return 'source.' . $this->quoteIdentifier($column);
+        }, $columns));
+
+        $sql = 'MERGE ' . $this->quoteIdentifier($table) . ' WITH (HOLDLOCK) AS target '
+            . "USING (SELECT {$sourceSelect}) AS source "
+            . "ON {$on} "
+            . "WHEN MATCHED THEN UPDATE SET {$updateSet} "
+            . "WHEN NOT MATCHED THEN INSERT ({$insertColumns}) VALUES ({$insertValues});";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(array_values($row));
+    }
+
+    private function upsertRowLegacy(string $table, array $row, array $uniqueBy): void
+    {
         $where = [];
         $params = [];
         foreach ($uniqueBy as $column) {
@@ -156,6 +244,23 @@ class PdoDatabaseAdapter implements DatabaseAdapterInterface
         }
 
         $this->insertRow($table, $row);
+    }
+
+    private function shouldFallbackToLegacyUpsert(string $driver, string $message): bool
+    {
+        $message = strtolower($message);
+
+        if (in_array($driver, ['pgsql', 'sqlite'], true)) {
+            if (str_contains($message, 'no unique') || str_contains($message, 'no exclusion')) {
+                return true;
+            }
+
+            if (str_contains($message, 'on conflict clause does not match')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @return array<string, string|null> */
