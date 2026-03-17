@@ -14,7 +14,7 @@ class ImportWorkflow
     public function previewFromPayload(string $filePath, string $originalName, array|string $payload): array
     {
         $resolved = $this->resolvePayload($payload);
-        $imports = $this->resolveImports($resolved, false);
+        $imports = $this->resolveImports($resolved);
 
         $previews = [];
         foreach ($imports as $index => $import) {
@@ -44,7 +44,7 @@ class ImportWorkflow
     public function runFromPayload(string $filePath, string $originalName, array|string $payload): array
     {
         $resolved = $this->resolvePayload($payload);
-        $imports = $this->resolveImports($resolved, true);
+        $imports = $this->resolveImports($resolved);
         $connection = is_string($resolved['connection'] ?? null) ? (string) $resolved['connection'] : null;
 
         return $this->service->runMulti(
@@ -80,7 +80,7 @@ class ImportWorkflow
         return $decoded;
     }
 
-    private function resolveImports(array $payload, bool $requireColumnMap): array
+    private function resolveImports(array $payload): array
     {
         $imports = $payload['imports'] ?? null;
         if (is_string($imports)) {
@@ -108,9 +108,6 @@ class ImportWorkflow
             }
 
             $columnMap = $this->arrayValue($import, ['column_map', 'columnMap']);
-            if ($requireColumnMap && $columnMap === []) {
-                throw new ImportException("Import item at index {$index} requires non-empty `column_map`.");
-            }
 
             $result[] = [
                 'table' => $table,

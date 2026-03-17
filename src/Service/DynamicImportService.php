@@ -179,7 +179,9 @@ class DynamicImportService
 
         $headerRow = $headerRow ?? $this->detectHeaderRow($rows);
         $headers = $this->buildHeaders($rows[$headerRow - 1] ?? []);
-        $resolvedMap = $this->normalizeColumnMap($columnMap);
+        $resolvedMap = $columnMap !== []
+            ? $this->normalizeColumnMap($columnMap)
+            : $this->autoMap($headers, $definition['columns']);
         $resolvedStaticValues = $this->resolveStaticValues($staticValues, $definition);
         $validation = $this->validateMapping($resolvedMap, $headers, $definition, $resolvedStaticValues);
 
